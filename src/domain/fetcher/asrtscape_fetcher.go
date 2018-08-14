@@ -10,9 +10,25 @@ import (
 	"github.com/andoshin11/go-crawler-example/src/types"
 )
 
-// ArtscapeItemsFetcher returns the list of child page urls
-func ArtscapeItemsFetcher(u string, ch *types.Channels) (err error) {
+// ArtscapeFetcher interface
+type ArtscapeFetcher interface {
+	FetchItems(u string, ch *types.Channels) (err error)
+	FetchDetail(ctx context.Context, subIdentifier, identifier string, ch *types.DetailChannels) (err error)
+}
+
+type artscapeFetcher struct {
+	parser parser.ArtscapeParser
+}
+
+// NewArtscapeFetcher returns struct
+func NewArtscapeFetcher(parser parser.ArtscapeParser) ArtscapeFetcher {
+	return &artscapeFetcher{parser}
+}
+
+// FetchItems returns the list of child page urls
+func (f *artscapeFetcher) FetchItems(u string, ch *types.Channels) (err error) {
 	defer func() { ch.FetcherDone <- 0 }()
+
 	baseURL, err := url.Parse(u)
 	if err != nil {
 		return
@@ -29,7 +45,7 @@ func ArtscapeItemsFetcher(u string, ch *types.Channels) (err error) {
 		return
 	}
 
-	urls := parser.ArtscapeItemsParser(doc)
+	urls := f.parser.ParseItems(doc)
 
 	for _, item := range urls {
 		itemURL, err := baseURL.Parse(item)
@@ -42,8 +58,8 @@ func ArtscapeItemsFetcher(u string, ch *types.Channels) (err error) {
 	return
 }
 
-// ArtscapeItemFetcher returns the item detail
-func ArtscapeItemFetcher(ctx context.Context, subIdentifier, identifier, parentID string, ch *types.DetailChannels) (err error) {
+// FetchDetail returns the item detail
+func (f *artscapeFetcher) FetchDetail(ctx context.Context, subIdentifier, identifier string, ch *types.DetailChannels) (err error) {
 	defer func() { ch.FetcherDone <- 0 }()
 	path := "http://artscape.jp/mdb/" + subIdentifier + "_1900.html"
 	resp, err := http.Get(path)
@@ -57,12 +73,11 @@ func ArtscapeItemFetcher(ctx context.Context, subIdentifier, identifier, parentI
 		return
 	}
 
-	museum := parser.ArtscapeItemParser(doc)
+	museum := f.parser.ParseDetail(doc)
 
 	ch.FetcherResult <- types.DetailFetcherResult{
-		ID:       identifier,
-		ParentID: parentID,
-		Item:     museum,
+		ID:   identifier,
+		Item: museum,
 	}
 
 	return

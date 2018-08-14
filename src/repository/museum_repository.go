@@ -3,9 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
-	"reflect"
 	"time"
 
 	"cloud.google.com/go/firestore"
@@ -36,7 +34,7 @@ func NewMuseumRepository(Client *firestore.Client) MuseumRepository {
 func (r *museumRepository) GetAll(ctx context.Context) ([]*types.Museum, error) {
 	iter := r.Client.Collection(collection).Documents(ctx)
 
-	museums := make([]*types.Museum, 10)
+	museums := make([]*types.Museum, 0)
 	for {
 		doc, err := iter.Next()
 		if err == iterator.Done {
@@ -90,11 +88,7 @@ func (r *museumRepository) AddItem(ctx context.Context, subIdentifier, source st
 func (r *museumRepository) UpdateItem(ctx context.Context, identifier string, museum *types.Museum) (err error) {
 	t := time.Now()
 
-	fmt.Printf("Success %#v\n", museum.Name)
-	fmt.Println(reflect.ValueOf(museum).Kind() != reflect.Map)
-	fmt.Printf("Success %#v\n", identifier)
-
-	_, err = r.Client.Collection(collection).Doc(identifier).Set(ctx, StructToMap(types.Museum{
+	_, err = r.Client.Collection(collection).Doc(identifier).Set(ctx, types.Museum{
 		Name:      museum.Name,
 		Address:   museum.Address,
 		Img:       museum.Img,
@@ -103,21 +97,21 @@ func (r *museumRepository) UpdateItem(ctx context.Context, identifier string, mu
 		UpdatedAt: t,
 		Lat:       museum.Lat,
 		Lng:       museum.Lng,
-	}), firestore.MergeAll)
+	}, firestore.MergeAll)
 
 	return
 }
 
-func StructToMap(data interface{}) map[string]interface{} {
-	result := make(map[string]interface{})
-	elem := reflect.ValueOf(data).Elem()
-	size := elem.NumField()
+// func StructToMap(data interface{}) map[string]interface{} {
+// 	result := make(map[string]interface{})
+// 	elem := reflect.ValueOf(data).Elem()
+// 	size := elem.NumField()
 
-	for i := 0; i < size; i++ {
-		field := elem.Type().Field(i).Name
-		value := elem.Field(i).Interface()
-		result[field] = value
-	}
+// 	for i := 0; i < size; i++ {
+// 		field := elem.Type().Field(i).Name
+// 		value := elem.Field(i).Interface()
+// 		result[field] = value
+// 	}
 
-	return result
-}
+// 	return result
+// }

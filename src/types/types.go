@@ -23,9 +23,8 @@ func NewChannels() *Channels {
 
 // DetailFetcherResult type
 type DetailFetcherResult struct {
-	ID       string
-	ParentID string
-	Item     *Museum
+	ID   string
+	Item *Museum
 }
 
 // DetailChannels type

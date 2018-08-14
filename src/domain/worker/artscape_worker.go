@@ -7,6 +7,7 @@ import (
 
 	"cloud.google.com/go/firestore"
 	"github.com/andoshin11/go-crawler-example/src/domain/fetcher"
+	"github.com/andoshin11/go-crawler-example/src/domain/parser"
 	"github.com/andoshin11/go-crawler-example/src/domain/uploader"
 	"github.com/andoshin11/go-crawler-example/src/repository"
 	"github.com/andoshin11/go-crawler-example/src/types"
@@ -28,21 +29,23 @@ func NewArtscapeWorker(Client *firestore.Client) ArtscapeWorker {
 }
 
 func (w *artscapeWorker) CrawlItems(ctx context.Context) {
+	parser := parser.NewArtscapeParser()
+	fetcher := fetcher.NewArtscapeFetcher(parser)
 	museumRepository := repository.NewMuseumRepository(w.Client)
 	uploader := uploader.NewArtscapeUploader(museumRepository)
 
 	// worker count
-	wc := 0
-	uploadWc := 0
+	fetcherWc := 0
+	uploaderWc := 0
 
 	chs := types.NewChannels()
 
 	// 47都道府県の各エリア
-	for i := 1; i <= 3; i++ {
-		wc++
+	for i := 1; i <= 4; i++ {
+		fetcherWc++
 		id := strconv.Itoa(i)
 		url := "http://artscape.jp/mdb/mdb_result.php?area=" + id
-		go fetcher.ArtscapeItemsFetcher(url, chs)
+		go fetcher.FetchItems(url, chs)
 	}
 
 	done := false
@@ -50,19 +53,18 @@ func (w *artscapeWorker) CrawlItems(ctx context.Context) {
 		select {
 		case res := <-chs.FetcherResult:
 			link := res.URL
-			subIdentifier := link[23 : len(link)-10]
+			subIdentifier := link[23 : len(link)-10] // parse id
 
-			// Check if the data exists on database
-			uploadWc++
+			uploaderWc++
 			go uploader.RegisterArtscapeMuseum(ctx, subIdentifier, chs)
 		case <-chs.FetcherDone:
-			wc--
-			if wc == 0 && uploadWc == 0 {
+			fetcherWc--
+			if fetcherWc == 0 && uploaderWc == 0 {
 				done = true
 			}
 		case <-chs.UploaderDone:
-			uploadWc--
-			if wc == 0 && uploadWc == 0 {
+			uploaderWc--
+			if fetcherWc == 0 && uploaderWc == 0 {
 				done = true
 			}
 		}
@@ -70,12 +72,14 @@ func (w *artscapeWorker) CrawlItems(ctx context.Context) {
 }
 
 func (w *artscapeWorker) CrawlDetail(ctx context.Context) {
+	parser := parser.NewArtscapeParser()
+	fetcher := fetcher.NewArtscapeFetcher(parser)
 	museumRepository := repository.NewMuseumRepository(w.Client)
 	uploader := uploader.NewArtscapeUploader(museumRepository)
 
 	// worker count
 	fetcherWc := 0
-	uploadWc := 0
+	uploaderWc := 0
 
 	chs := types.NewDetailChannels()
 
@@ -87,8 +91,7 @@ func (w *artscapeWorker) CrawlDetail(ctx context.Context) {
 	for _, museum := range museums {
 		if museum != nil {
 			fetcherWc++
-			log.Println("start fetching")
-			go fetcher.ArtscapeItemFetcher(ctx, museum.SubIdentifier, museum.Identifier, museum.ParentID, chs)
+			go fetcher.FetchDetail(ctx, museum.SubIdentifier, museum.Identifier, chs)
 		}
 	}
 
@@ -96,19 +99,16 @@ func (w *artscapeWorker) CrawlDetail(ctx context.Context) {
 	for !done {
 		select {
 		case res := <-chs.FetcherResult:
-			// fmt.Printf("Success %#v\n", res.Item)
-
-			// Check if the data exists on database
-			uploadWc++
+			uploaderWc++
 			go uploader.UpdateArtscapeMuseum(ctx, res.ID, res.Item, chs)
 		case <-chs.FetcherDone:
 			fetcherWc--
-			if fetcherWc == 0 && uploadWc == 0 {
+			if fetcherWc == 0 && uploaderWc == 0 {
 				done = true
 			}
 		case <-chs.UploaderDone:
-			uploadWc--
-			if fetcherWc == 0 && uploadWc == 0 {
+			uploaderWc--
+			if fetcherWc == 0 && uploaderWc == 0 {
 				done = true
 			}
 		}
